@@ -1,0 +1,184 @@
+﻿Program.Sub.Preflight.Start
+Program.External.Include.Library("UPLAROP.lib")
+v.Global.sFormat.Declare
+v.Global.sNumber.Declare
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+f.Intrinsic.Control.Try
+
+	v.Local.sFile.Declare
+	v.Local.sRows.Declare
+	v.Local.i.Declare
+	v.Local.sInvNum.Declare
+	v.Local.sCustCode.Declare
+	v.Local.sDate.Declare
+	v.Local.dDate.Declare
+	v.Local.sRef.Declare
+	v.Local.sFields.Declare
+	v.Local.fAmount.Declare
+	v.Local.fGST.Declare
+	V.Local.sAmount.Declare
+	v.Local.fTotAmt.Declare
+	v.Local.fTotInv.Declare
+	v.Local.fTotGST.Declare
+	v.Local.fBaseInv.Declare
+	v.Local.fRate.Declare
+	v.Local.sGLJrnl.Declare
+	v.Local.sFileName.Declare
+	v.Local.sPayTerms.Declare
+	v.Local.sTaxCode.Declare
+	v.Local.sUser.Declare
+	v.Local.sSQL.Declare
+	v.Local.sRet.Declare
+	v.Local.sMsg.Declare
+	v.Local.sErrors.Declare
+	v.Local.sFileNumber.Declare
+	v.Local.iNumber.Declare
+	v.Local.sNumber.Declare
+	v.Local.dToday.Declare
+	v.Local.dToday.Set(v.Ambient.Date)
+	
+	V.Local.sParam.Declare
+	v.Local.sBatch.Declare
+	v.Local.iWeek.Declare
+	v.Local.iYear.Declare
+	v.Local.iHour.Declare
+	f.Intrinsic.String.Concat(v.Caller.FilesDir,"\APGBatch.txt",v.Local.sFileNumber)
+	f.Intrinsic.File.File2String(v.Local.sFileNumber,v.Local.iNumber)
+	f.Intrinsic.Math.Add(v.Local.iNumber,1,v.Local.iNumber)
+	f.Intrinsic.File.String2File(v.Local.sFileNumber,v.Local.iNumber)
+	f.Intrinsic.String.LPad(v.Local.iNumber,"0",4,v.Global.sNumber)
+	f.Intrinsic.String.Format(v.Ambient.Date,"ww",v.Local.iWeek)
+	f.Intrinsic.String.Format(v.Ambient.NOW,"hh",v.Local.iHour)
+	f.Intrinsic.String.Concat("G",v.Global.sNumber,v.Local.sBatch)
+	'v.Local.sBatch.Set("TEST3")
+	f.Intrinsic.UI.ShowOpenFileDialog("",".csv",v.Local.sFile)
+	f.Intrinsic.Control.If(v.Local.sFile,<>,"***CANCEL***")
+		
+		f.ODBC.Connection!conx.opencompanyconnection(90)
+		f.Intrinsic.File.File2String(v.Local.sFile,V.Local.sFile)
+		f.Intrinsic.String.Split(v.Local.sFile,v.Ambient.NewLine,v.Local.sRows)
+		
+		f.Intrinsic.Control.For(v.Local.i,1,v.Local.sRows.UBound,1)
+			f.Intrinsic.Control.If(v.Local.sRows(v.Local.i).Trim,<>,"")
+				f.Intrinsic.String.SplitCSV(v.Local.sRows(v.Local.i),v.Local.sFields)
+				v.Local.sInvNum.Set(v.Local.sFields(0))
+				v.Local.sCustCode.Set(v.Local.sFields(1))
+				
+				'check if customer exists in the table
+				f.Intrinsic.String.Build("SELECT NAME_CUSTOMER FROM V_CUSTOMER_MASTER WHERE CUSTOMER='{0}'",v.Local.sCustCode.Trim,v.Local.ssql)
+				f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSQL,v.Local.sret)
+				f.Intrinsic.Control.If(v.Local.sret.Trim,=,"")
+					f.Intrinsic.String.Concat(v.Local.sErrors,v.Local.sCustCode," is missing.",v.Ambient.NewLine,v.Local.sErrors)
+				f.Intrinsic.Control.EndIf
+				
+				'Grab the customer's terms code
+				f.Intrinsic.String.Build("select PAYMENT_TERMS from V_CUSTOMER_SALES where CUSTOMER='{0}'",v.Local.sCustCode.Trim,v.Local.sSql)
+				F.ODBC.Connection!Conx.ExecuteAndReturn(v.Local.sSQL,v.Local.sPayTerms)
+				
+				'Grab the customer's tax code
+				f.Intrinsic.String.Build("select tax_auth from customer_tax_auth where cust='{0}'",v.Local.sCustCode.Trim,v.Local.sSql)
+				f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSQL,v.Local.sTaxCode)
+				
+				'Grab the tax code percent
+				f.Intrinsic.String.Build("SELECT IFNULL(RATE,0) FROM AR_TAX_TABLES WHERE ZONE='AU' AND AUTH='{0}'",v.Local.sTaxCode.Trim,v.Local.sSQL)
+				F.ODBC.Connection!Conx.ExecuteAndReturn(v.Local.sSQL,v.Local.fRate)
+				
+				v.Local.sDate.Set(v.Local.sFields(2))
+				v.Local.sRef.Set(v.Local.sFields(5))
+				v.Local.fAmount.Set(v.Local.sFields(7))
+				f.Intrinsic.Control.If(v.Local.fAmount,<>,0)
+				f.Intrinsic.Control.AndIf(v.Local.fRate,<>,0)
+					f.Intrinsic.Math.Div(v.Local.fAmount,11,v.Local.fGST)
+				f.Intrinsic.Control.else
+					v.Local.fGST.Set(0)
+				f.Intrinsic.Control.EndIf
+				f.Intrinsic.String.Format(v.Local.sDate,"MMDDYY",v.Local.sDate)
+				F.Intrinsic.String.Format(v.Local.fAmount,"000000000000000.00",v.Local.sAmount)
+				f.Intrinsic.String.Replace(v.Local.sAmount,".","",v.Local.sAmount)
+				F.Data.Datatable.AddRow("UPLAROP","BatchNum",v.Local.sBatch, "BatchLine",v.Local.i,"TransCode",10,"CustNum",v.Local.sCustCode,"TransDate",v.Local.sDate,"InvDate",v.Local.sDate,"InvAmt",v.Local.fAmount,"Ref",v.Local.sRef,"InvNum",v.Local.sInvNum,"TaxAmtOrdCurr",v.Local.fGST,"TermsCode",v.Local.sPayTerms)
+				
+				f.Intrinsic.Math.Sub(v.Local.fAmount,v.Local.fGST,v.Local.fBaseInv)
+				f.Intrinsic.Math.Add(v.Local.fTotGST,v.Local.fGST,v.Local.fTotGST)
+				f.Intrinsic.Math.Add(v.Local.fTotInv,v.Local.fBaseInv,v.Local.fTotInv)
+				f.Intrinsic.Math.Add(v.Local.fTotAmt,v.Local.fAmount,v.Local.fTotAmt)
+			f.Intrinsic.Control.EndIf
+		f.Intrinsic.Control.Next(v.Local.i)
+	f.Intrinsic.Control.EndIf
+	
+	
+	f.Intrinsic.Control.If(v.Local.sErrors.Trim,<>,"")
+		f.Intrinsic.String.Concat(v.Local.sErrors,"Program will now exit.",v.Local.sErrors)
+		f.Intrinsic.UI.Msgbox(v.Local.sErrors)
+		f.ODBC.Connection!conx.Close
+		f.Intrinsic.Control.End
+	f.Intrinsic.Control.EndIf
+	
+	f.Intrinsic.Control.CallSub(UPLAROPSync)
+	
+	'Create the journal file
+	f.Intrinsic.Control.CallSub(formatGL,"Account","1-1-0200","Desc","Trade Debtors","Amount",v.Local.fTotAmt,"Reference","GALV-SALES")
+	f.Intrinsic.Math.Mult(v.Local.fTotGST,"-1",v.Local.fTotGST)
+	f.Intrinsic.Math.Round(v.Local.fTotGST,2,v.Local.fTotGST)
+	f.Intrinsic.Control.CallSub(formatGL,"Account","2-1-0401","Desc","GST Output","Amount",v.Local.fTotGST,"Reference","GALV-SALES")
+	f.Intrinsic.Math.Mult(v.Local.fTotInv,"-1",v.Local.fTotInv)
+	f.Intrinsic.Math.Round(v.Local.fTotInv,2,v.Local.fTotInv)
+	f.Intrinsic.Control.CallSub(formatGL,"Account","4-GAL-0001","Desc","Sales Galvanizing","Amount",v.Local.fTotInv,"Reference","GALV-SALES")
+
+	'Save the file to GLtttccc located in FILES folder
+	F.Intrinsic.String.Concat(V.Caller.FilesDir,"\GL",V.Caller.Terminal,V.Caller.CompanyCode,"1234",V.Local.sFileName)
+	F.Intrinsic.File.String2File(V.Local.sFileName,v.Global.sFormat)
+	
+	'Preparing the program parameter and run XGL004
+	F.Intrinsic.String.RPad(V.Caller.User," ",8,V.Local.sUser)
+	F.Intrinsic.String.Concat("GL",V.Caller.Terminal,V.Caller.CompanyCode,"1234",V.Local.sParam)
+	F.Intrinsic.String.RPad(V.Local.sParam," ",12,V.Local.sParam)
+	F.Intrinsic.String.Concat(V.Ambient.QuadQuote,V.Caller.CompanyCode,V.Local.sParam,V.Local.sUser.UCase,V.Ambient.QuadQuote,V.Local.sParam)
+	F.Intrinsic.Task.LaunchGSSSync("XGL004","-C",V.Local.sParam)
+	
+	F.Intrinsic.String.Build("select batch from v_gl_jrnl_entry where userid = '{0}' and last_chg_pgm = 'XGL004' and last_chg_date = '{1}' order by last_chg_time desc",V.Local.sUser.Trim,V.Local.dToday.PervasiveDate,V.Local.sSQL)
+	F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSQL)
+	V.Local.sBatch.Set(V.ODBC.conx!rst.FieldVal!batch)
+	F.ODBC.conx!rst.Close
+	f.ODBC.Connection!conx.Close
+	
+	f.Intrinsic.String.Concat("Batch ",v.Local.sBatch," created.",v.Local.sMsg)
+	f.Intrinsic.UI.Msgbox(v.Local.sMsg)
+	
+f.Intrinsic.Control.Catch
+	f.Intrinsic.UI.Msgbox(v.Ambient.ErrorDescription)
+	f.Intrinsic.Control.End
+f.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.formatGL.Start
+f.Intrinsic.Control.Try
+	v.Local.sGLVal.Declare
+	v.Local.sAmt.Declare
+	v.Local.sDescVal.Declare
+	v.Local.sMonth.Declare
+	v.Local.sYear.Declare
+	v.Local.sFileRow.Declare
+	v.Local.sRef.Declare
+	V.Local.sSpace.Declare
+	f.Intrinsic.String.RPad(" "," ",7,v.Local.sSpace)
+	F.Intrinsic.String.RPad(v.Args.Account," ",15,V.Local.sGLVal)
+	f.Intrinsic.String.RPad(v.Args.Amount," ",12,v.Local.sAmt)
+	f.Intrinsic.String.RPad(v.Args.Desc," ",30,v.Local.sDescVal)
+	F.Intrinsic.String.Format(V.Ambient.Date,"MM",V.Local.sMonth)
+	F.Intrinsic.String.Format(V.Ambient.Date,"YY",V.Local.sYear)
+	f.Intrinsic.String.RPad(v.Args.Reference," ",15,v.Local.sRef)
+	f.Intrinsic.String.Concat(v.Global.sFormat,v.Local.sGLVal,",",v.Local.sAmt,",",v.Local.sDescVal,",",v.Local.sYear,",",v.Local.sMonth,",",v.Local.sSpace,",",v.Local.sRef,v.Ambient.NewLine,v.Global.sFormat)
+	
+f.Intrinsic.Control.Catch
+	f.Intrinsic.UI.Msgbox(v.Ambient.ErrorDescription)
+	f.Intrinsic.Control.End
+
+f.Intrinsic.Control.EndTry
+Program.Sub.formatGL.End
+
+Program.Sub.Comments.Start
+${$5$}$2.0.0.0$}$2
+${$6$}$Globalshop$}$20210826132011566$}$XbGA5Jlbk/pa9e8jvNC+5gB1AWnpDTHqi6JZpvXQRTod84AVWS5Q71d67nInT6q6Ivp3wTr23vAelycnD9jeAQ==
+Program.Sub.Comments.End
